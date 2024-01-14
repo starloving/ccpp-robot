@@ -96,7 +96,7 @@ nav_msgs::msg::Path passed_path;
 rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_passed_path ;
 
 void pose_callback(const nav_msgs::msg::Odometry::SharedPtr poses)
-{ //里程计回调函数,用来计算当前机器人位置与前面目标点的距离,判断是否要发新的幕摆点
+{ //마일리지 콜백 함수, 현재 로봇 위치와 앞의 목표점과의 거리를 계산하여, 새로운 커튼 포인트 발행 여부를 판단하는 데 사용된다.
   x_current = poses->pose.pose.position.x;
   y_current = poses->pose.pose.position.y;
   passed_path.header = poses->header;
@@ -110,10 +110,10 @@ void pose_callback(const nav_msgs::msg::Odometry::SharedPtr poses)
 int taille_last_path = 0;
 bool new_path = false;
 
-//接受规划的路径
+//계획을 수락하는 경로로 받아들임
 void path_callback(const nav_msgs::msg::Path::SharedPtr path)
 {
-  //注意为了rviz显示方便 路径一直在发,但是这里只用接受一次就好,当规划的路径发生变化时候再重新装载
+  //주의 rviz를 위해 편리한 경로를 계속 보내고 있습니다. 그러나 여기서는 한 번만 수락하면 됩니다. 계획된 경로가 변경될 때 다시 로드
   if ((planned_path.Path.size() == 0) || (path->poses.size() != taille_last_path))
   {
     planned_path.Path.clear();
@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
   int count = 0;
   double angle;
   bool goal_reached = false;
-  // 获取发送下一个点的阈值
+  // 다음 점을 보낼 임계값을 가져옵니다.
   // if (!next_goal.getParam("/NextGoal/tolerance_goal", normeNextGoal))
   // {
   //   ROS_ERROR("Please set your tolerance_goal");
@@ -187,11 +187,11 @@ int main(int argc, char *argv[]) {
       count = 0;
       new_path = false;
     }
-    // 当前处理的点
+    // 현재 처리 지점
     cout << " count : " << count << endl;
     if (!planned_path.Path.empty())
     {
-      //当前距离达到了
+      // 현재 거리가 도달했다.
       if (sqrt(pow(x_current - planned_path.Path[count].x, 2) + pow(y_current - planned_path.Path[count].y, 2)) <= normeNextGoal)
       {
         count++;
@@ -205,7 +205,7 @@ int main(int argc, char *argv[]) {
         goal_msgs.pose.position.y = planned_path.Path[count].y;
         goal_msgs.pose.position.z = 0;
         if (count < planned_path.Path.size())
-        {//计算发布的yaw，不过还有bug 但是不影响使用，yaw不会产生太大影响
+        {// 계산하여 배포한 yaw, 단, bug도 있지만 사용에 지장을 주지 않으며 yaw는 큰 영향을 미치지 않는다.
           angle = atan2(planned_path.Path[count + 1].y - planned_path.Path[count].y, planned_path.Path[count + 1].x - planned_path.Path[count].x);
         }
         else
@@ -234,11 +234,11 @@ int main(int argc, char *argv[]) {
         pub1->publish(goal_msgs);
       }
       cout << x_current << " " << y_current << endl;
-      //当前
+      //현재
       cout << planned_path.Path[count].x << " " << planned_path.Path[count].y << endl;
-      //目标
+      //목표
       cout << " DISTANCE : " << sqrt((x_current - planned_path.Path[count].x) * (x_current - planned_path.Path[count].x) + (y_current - planned_path.Path[count].y) * (y_current - planned_path.Path[count].y)) << endl;
-      // 距离公式
+      // 거리 공식
     }
     loop_rate.sleep();
   }
