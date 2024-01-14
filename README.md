@@ -1,8 +1,8 @@
 ## 실행 환경
-Ubuntu20.04
-Ros2-foxy
-Gazebo11
-rviz2
+Ubuntu20.04  
+Ros2-foxy  
+Gazebo11  
+rviz2  
 
 ## 명령어
 폴더를 만들기 ccpp-robot/ccpp_ws  colcon build
