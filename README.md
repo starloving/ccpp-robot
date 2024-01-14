@@ -5,7 +5,8 @@ Gazebo11
 rviz2  
 
 ## 명령어
-폴더를 만들기 ccpp-robot/ccpp_ws  colcon build  
+폴더를 만들기 ccpp-robot/ccpp_ws  
+colcon build  
 cd src  
 git clone https://github.com/starloving/ccpp-robot.git  
 cd ..  
