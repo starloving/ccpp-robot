@@ -18,7 +18,7 @@ CleaningPathPlanning::CleaningPathPlanning()
         r.sleep();
     }
     
-    // std::this_thread::sleep_for(std::chrono::milliseconds(2000)); // 2秒延时
+    // std::this_thread::sleep_for(std::chrono::milliseconds(2000)); // 2초 지연
 
     //costmap2d_ros_->updateMap();
     costmap2d_ = costmap2d_ros_->getCostmap();
@@ -33,20 +33,20 @@ CleaningPathPlanning::CleaningPathPlanning()
     SIZE_OF_CELL = 3;
     GRID_COVERED_VALUE = 0;
 
-    this->declare_parameter<int>("size_of_cell" , SIZE_OF_CELL) ;    // 设置机器人占据n*n的栅格，决定规划的稀疏   
-    this->get_parameter("size_of_cell" , SIZE_OF_CELL) ;             // 搜索参数,根据名称"size of cell"搜索参数，将对应名称下的参数值赋给sizeOfCellString.
+    this->declare_parameter<int>("size_of_cell" , SIZE_OF_CELL) ;    // 로봇이 n*n을 차지하는 격자를 설정하여, 희소성을 결정하다.  
+    this->get_parameter("size_of_cell" , SIZE_OF_CELL) ;             // 검색 매개변수, 이름 "size of cell" 검색 매개변수, 해당 이름 아래의 매개변수 값을 sizeOfCellString.
     cout << "SIZE_OF_CELL : " << SIZE_OF_CELL << endl ;
     
     this->declare_parameter<int>("grid_covered_value" , GRID_COVERED_VALUE);
     this->get_parameter("grid_covered_value" , GRID_COVERED_VALUE) ;
     cout << "GRID_COVERED_VALUE : " << GRID_COVERED_VALUE << endl;
 
-    int sizex = costmap2d_->getSizeInCellsX(); //获取地图尺寸
+    int sizex = costmap2d_->getSizeInCellsX(); // 지도 크기 가져오기
     int sizey = costmap2d_->getSizeInCellsY();
     cout << "The size of map is " << sizex << "  " << sizey << endl;
-    resolution_ = costmap2d_->getResolution(); //分辨率
+    resolution_ = costmap2d_->getResolution(); // 해상도.
     
-    // 保存地图
+    // 지도를 저장
     costmap2d_->saveMap("qinyuan.png");
 
     srcMap_ = Mat(sizey, sizex, CV_8U);
@@ -56,7 +56,7 @@ CleaningPathPlanning::CleaningPathPlanning()
         for (int c = 0; c < sizex; c++)
         {
             srcMap_.at<uchar>(r, c) = costmap2d_->getCost(c, sizey - r - 1); // ??sizey-r-1 caution: costmap's origin is at left bottom ,while opencv's pic's origin is at left-top.
-            //getCost（）:获取代价值
+            //getCost( ): 세대 값 가져오기
         }
     }
 
@@ -69,24 +69,25 @@ CleaningPathPlanning::CleaningPathPlanning()
     // imwrite("debug_srcmap.jpg",srcMap_);
 
     if (!srcMap_.empty())
-        initialized_ = true; //这句话説明srcMap_里面得有东西才能说明初始化成功。
+        initialized_ = true; // 이 말은 srcMap_안에 뭔가가 있어야 초기화에 성공했다는 것을 말해줍니다.
     else
         initialized_ = false;
 
     RCLCPP_INFO(this->get_logger(), "CleaningPathPlanning running ...") ;
 }
-// 规划路径
+// 경로를 계획
 vector<geometry_msgs::msg::PoseStamped> CleaningPathPlanning::GetPathInROS()
 {
     // vector<geometry_msgs::msg::PoseStamped> resultVec;
+	//비어 있는지 여부, 비어 있지 않으면 벡터를 비웁니다.새로운 경로를 채우기 전에 이전 경로 데이터를 비우도록 하기 위한 것이다.
     if (!pathVecInROS_.empty())
-        pathVecInROS_.clear(); //清空操作
-    geometry_msgs::msg::PoseStamped posestamped;
+        pathVecInROS_.clear(); // 비우기 작업
+    geometry_msgs::msg::PoseStamped posestamped; //변환된 자세 정보를 저장하는 데 사용한다.
     geometry_msgs::msg::Pose pose;
     vector<cellIndex> cellvec;
     cellvec = GetPathInCV();
     /*trasnsform*/
-    vector<cellIndex>::iterator iter; //cellIndex里面存放的是行，列以及角度信息。
+    vector<cellIndex>::iterator iter; // (cell Index)에는 행, 열 및 각도 정보가 저장되어 있습니다.
     int sizey = cellMat_.rows;
 
     for (iter = cellvec.begin(); iter != cellvec.end(); iter++)
@@ -102,11 +103,12 @@ vector<geometry_msgs::msg::PoseStamped> CleaningPathPlanning::GetPathInROS()
 
         pathVecInROS_.push_back(posestamped);
     }
-    publishPlan(pathVecInROS_);
+    publishPlan(pathVecInROS_); //경로 정보를 게시하는 데 사용될 수 있습니다.
     cout << "The path size is " << pathVecInROS_.size() << endl;
-    return pathVecInROS_;
+    return pathVecInROS_;  //이 벡터에는 ROS 좌표로 변환된 경로 정보가 포함되어 있습니다.
 }
 
+// 경계를 따라 추적되는 경로를 획득하고 경로를 ROS 메시지로 게시하는 데 사용됩니다.
 vector<geometry_msgs::msg::PoseStamped> CleaningPathPlanning::GetBorderTrackingPathInROS()
 {
     //vector<geometry_msgs::msg::PoseStamped> resultPathInROS;
@@ -167,12 +169,13 @@ vector<geometry_msgs::msg::PoseStamped> CleaningPathPlanning::GetBorderTrackingP
 
 //First make border path planning in original resolution using opencv tools.Then transform the result
 //in ROS format and take the robot's shape into account.
+//OpenCV에서 이미지 데이터를 처리하고 경계 추적 경로의 픽셀 좌표를 추출하는 데 사용됩니다.
 void CleaningPathPlanning::GetBorderTrackingPathInCV(vector<cv::Point2i> &resultVec)
 {
     std::vector<cv::Point2i> borderPointsIndexVec; //todo:make point2i corrresponding to cellindex.
     resultVec.clear();
     if (srcMap_.empty())
-        return; // srcMap 是个啥？
+        return;
 
     cv::Point2i temppoint;
     int r, c, i, j;
@@ -207,7 +210,7 @@ void CleaningPathPlanning::GetBorderTrackingPathInCV(vector<cv::Point2i> &result
 
     int minDistIndex = -1, loopCounter = 0;
     double dist, minDist;
-    visitedVec.assign(borderPointsIndexVec.size(), false); //vector assign是vector容器下的赋值函数。
+    visitedVec.assign(borderPointsIndexVec.size(), false); //vector assign은 vector 컨테이너 아래의 할당 함수입니다.
 
     Point2i curPoint = borderPointsIndexVec[0];
     visitedVec[0] = true;
@@ -237,6 +240,7 @@ void CleaningPathPlanning::GetBorderTrackingPathInCV(vector<cv::Point2i> &result
     //writeResult(resultmat,resultVec);
 }
 
+//해당 영역이 오버라이드되었음을 표시하는 오버라이드 경로를 설정하는 데 사용되는 그리드 맵의 영역입니다.
 void CleaningPathPlanning::SetCoveredGrid(double wx, double wy)
 {
     unsigned int mx, my, index;
@@ -256,6 +260,7 @@ void CleaningPathPlanning::SetCoveredGrid(double wx, double wy)
     }
 }
 
+//경로를 덮어쓰는 그리드 맵을 게시
 void CleaningPathPlanning::PublishGrid()
 {
     if (!initialized_)
@@ -275,6 +280,7 @@ void CleaningPathPlanning::PublishCoveragePath()
     publishPlan(this->pathVecInROS_);
 }
 
+//ROS에 경로 정보를 게시하는 데 사용됩니다.
 void CleaningPathPlanning::publishPlan(const std::vector<geometry_msgs::msg::PoseStamped> &path)
 {
     if (!initialized_)
@@ -315,20 +321,26 @@ bool CleaningPathPlanning::initializeMats()
     
     neuralizedMat_ = Mat(cellMat_.rows, cellMat_.cols, CV_32F);
     //Astarmap = Mat(cellMat_.rows, cellMat_.cols, CV_32F);
-    // 将cellMat 映射到 neuralizedMat_ 上，修改必要的像素值
+    // cellMat를 neuralizedMat_ 에 매핑하여 필요한 픽셀 값을 수정합니다.
     initializeNeuralMat(cellMat_, neuralizedMat_);
     //Astarmap = neuralizedMat_;
     return true;
 }
 
+/*
+입력한 지도를 처리하고 자유 공간 정보를 추출하고 SIZE_OF_CELL을 최소 단위로 재분할하는 행렬을 생성합니다.
+ 매개 변수:
+srcImg: 입력 이미지, 지도 정보가 포함된 이미지일 수 있습니다.
+cellMat: SIZE_OF_CELL을 최소 단위로 재분할한 행렬을 나타내는 출력 매개변수입니다.
+freeSpaceVec: 출력 매개변수, 자유 공간 좌표 정보를 포함하는 벡터입니다.*/
 void CleaningPathPlanning::getCellMatAndFreeSpace(Mat srcImg, Mat &cellMat, vector<cellIndex> &freeSpaceVec)
 {
-    cellMat = Mat(srcImg.rows / SIZE_OF_CELL, srcImg.cols / SIZE_OF_CELL, srcImg.type()); //cellMat是以之前规定的cell为最小单位重新划分的矩阵
+    cellMat = Mat(srcImg.rows / SIZE_OF_CELL, srcImg.cols / SIZE_OF_CELL, srcImg.type()); //cellMat은 이전에 규정되었던 cell을 최소 단위로 재분할한 행렬이다.
 
     freeSpaceVec.clear();
     bool isFree = true;
     int r = 0, c = 0, i = 0, j = 0;
-    // 获取图像中的 FREE_SPACE 的坐标序列
+    // 그림에서 FREE_SPACE 좌표 시퀀스를 가져옵니다.
     for (r = 0; r < cellMat.rows; r++)
     {
         for (c = 0; c < cellMat.cols; c++)
@@ -338,7 +350,7 @@ void CleaningPathPlanning::getCellMatAndFreeSpace(Mat srcImg, Mat &cellMat, vect
             {
                 for (j = 0; j < SIZE_OF_CELL; j++)
                 {
-                    // 判断对应点的像素值是否为 FREE_SPACE
+                    // 해당 점의 픽셀 값이 FREE_SPACE인지 여부를 판단합니다.
                     if (srcImg.at<uchar>(r * SIZE_OF_CELL + i, c * SIZE_OF_CELL + j) != nav2_costmap_2d::FREE_SPACE)
                     {
                         isFree = false;
@@ -349,7 +361,7 @@ void CleaningPathPlanning::getCellMatAndFreeSpace(Mat srcImg, Mat &cellMat, vect
             }
             if (isFree)
             {
-                // 保存这个像素点位置
+                // 픽셀 위치를 저장합니다.
                 cellIndex ci;
                 ci.row = r;
                 ci.col = c;
@@ -378,7 +390,7 @@ void CleaningPathPlanning::initializeNeuralMat(Mat cellMat, Mat neuralizedMat)
             if (cellMat.at<uchar>(i, j) == nav2_costmap_2d::LETHAL_OBSTACLE)
                 neuralizedMat.at<float>(i, j) = -100000.0; 
             else
-                neuralizedMat.at<float>(i, j) = 50.0 / j; //这里的1.0/j的用意是什么？这里有没有考虑到j=0时刻的问题呢？   hjr注
+                neuralizedMat.at<float>(i, j) = 50.0 / j; 
         }
     }
     return;
@@ -387,13 +399,13 @@ void CleaningPathPlanning::initializeNeuralMat(Mat cellMat, Mat neuralizedMat)
 void CleaningPathPlanning::writeResult(Mat resultmat, vector<cellIndex> pathVec)
 {
     int i = 0, j = 0;
-    Point initpoint = Point(pathVec[0].col * SIZE_OF_CELL + SIZE_OF_CELL / 2, pathVec[0].row * SIZE_OF_CELL + SIZE_OF_CELL / 2); //这里是取中心位置的意思吗？
+    Point initpoint = Point(pathVec[0].col * SIZE_OF_CELL + SIZE_OF_CELL / 2, pathVec[0].row * SIZE_OF_CELL + SIZE_OF_CELL / 2); 
     for (i = 1; i < pathVec.size(); i++)
     {
         Point cupoint = Point(pathVec[i].col * SIZE_OF_CELL + SIZE_OF_CELL / 2, pathVec[i].row * SIZE_OF_CELL + SIZE_OF_CELL / 2);
         if (sqrt((initpoint.x - cupoint.x) * (initpoint.x - cupoint.x) + (initpoint.y - cupoint.y) * (initpoint.y - cupoint.y)) > 2)
         {
-            line(resultmat, initpoint, cupoint, Scalar(0, 255, 0), 1, 8); //line就是划线函数
+            line(resultmat, initpoint, cupoint, Scalar(0, 255, 0), 1, 8); //line은 바로 밑줄 친 함수이다.
         }
         else
             line(resultmat, initpoint, cupoint, Scalar(0, 0, 255), 1);
@@ -438,7 +450,7 @@ void CleaningPathPlanning::mainPlanningLoop()
     }
     //initPoint.row = initPose_.getOrigin().y()
     unsigned int mx, my;
-    double wx = initPose_.pose.position.x; //获取原点的x坐标
+    double wx = initPose_.pose.position.x; //원점의 x좌표를 가져옵니다.
     double wy = initPose_.pose.position.y;
     //geometry_msgs::msg::PoseStamped current_position;
     //tf::poseStampedTFToMsg(global_pose, current_position);
@@ -449,15 +461,15 @@ void CleaningPathPlanning::mainPlanningLoop()
         RCLCPP_INFO(this->get_logger(), "Failed to get robot location in map! Please check where goes wrong!");
         return;
     }
-    initPoint.row = cellMat_.rows - my / SIZE_OF_CELL - 1; //再研究一下这个行列之间的转换问题。
-    initPoint.col = mx / SIZE_OF_CELL;                     //这里貌似不光有行列转换
+    initPoint.row = cellMat_.rows - my / SIZE_OF_CELL - 1; 
+    initPoint.col = mx / SIZE_OF_CELL;                    
 
-    currentPoint = initPoint; //将初始化的点赋予给当前点。
+    currentPoint = initPoint; //초기화된 점을 현재 점에 부여합니다.
     pathVec_.clear();
     pathVec_.push_back(initPoint);
 
     float initTheta = initPoint.theta; //initial orientation
-    const float c_0 = 50;              //这貌似是后面算法中要用到的参数。0.001
+    const float c_0 = 50;              //다음 알고리즘에서 사용할 인자인 것 같다. 0.001
     float e = 0.0, v = 0.0, v_1 = 0.0, deltaTheta = 0.0, lasttheta = initTheta, PI = 3.14159;
     int fx;
     vector<float> thetaVec = {0, 45, 90, 135, 180, 225, 270, 315};
@@ -481,8 +493,7 @@ void CleaningPathPlanning::mainPlanningLoop()
         */
 
         //compute neiborhood's activities
-        //hjr注：目前我认为这里进行的是有关方向上的抉择。
-        int maxIndex = 0; //目前尚不清楚这两个参数最后是干啥的。
+        int maxIndex = 0; 
         float max_v = -300;
         neuralizedMat_.at<float>(currentPoint.row, currentPoint.col) = -250.0;
         lasttheta = currentPoint.theta;
@@ -491,7 +502,7 @@ void CleaningPathPlanning::mainPlanningLoop()
             deltaTheta = max(thetaVec[id], lasttheta) - min(thetaVec[id], lasttheta);
             if (deltaTheta > 180)
                 deltaTheta = 360 - deltaTheta;
-            e = 1 - abs(deltaTheta) / 180; //角度参数？
+            e = 1 - abs(deltaTheta) / 180; //각도 파라미터?
             switch (id)
             {
             case 0:
@@ -499,7 +510,7 @@ void CleaningPathPlanning::mainPlanningLoop()
                 {
                     v = -100000;
                     break;
-                } //处于边界？
+                } //경계에 있다고?
                 v = neuralizedMat_.at<float>(currentPoint.row, currentPoint.col + 1) + c_0 * e;
 
                 break;
@@ -582,7 +593,7 @@ void CleaningPathPlanning::mainPlanningLoop()
             }
         }
 
-        if (max_v <= 0) //接下来应该是在处理距离上的关系。
+        if (max_v <= 0) //다음은 처리 거리에서의 관계일 것입니다.              
         {
             float dist = 0.0, min_dist = 100000000;
             //vector<cellIndex>::iterator min_iter;
@@ -591,7 +602,7 @@ void CleaningPathPlanning::mainPlanningLoop()
             {
                 if (neuralizedMat_.at<float>((*it).row, (*it).col) > 0)
                 {
-                    if (Boundingjudge((*it).row, (*it).col)) //周围是否存在-250的点
+                    if (Boundingjudge((*it).row, (*it).col)) //주변에 -250 점이 있는지 여부
                     {
                         dist = sqrt((currentPoint.row - (*it).row) * (currentPoint.row - (*it).row) + (currentPoint.col - (*it).col) * (currentPoint.col - (*it).col));
                         if (dist < min_dist)
@@ -616,15 +627,13 @@ void CleaningPathPlanning::mainPlanningLoop()
 
                 continue;
             }
-            else //产生了自锁现象
+            else //self-locking 현상이 발생하다
             {
                 RCLCPP_INFO(this->get_logger(), "The program has been dead because of the self-locking");
                 RCLCPP_INFO(this->get_logger(), "The program has gone through %ld steps", pathVec_.size());
                 break;
             }
         }
-
-        //hjr自己编写部分------------------------------------------------------------------------------
 
         //next point.
         switch (maxIndex)
@@ -699,15 +708,16 @@ bool CleaningPathPlanning::findElement(vector<Point2i> pointsVec, Point2i pt, in
     return false;
 }
 
-bool CleaningPathPlanning::initializeCoveredGrid()      // 在这里我对CoverGrid的理解为覆盖栅格。
+// Grid map 초기화
+bool CleaningPathPlanning::initializeCoveredGrid() 
 {
     // boost::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap2d_->getMutex()));
 
     std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap2d_->getMutex()));
 
-    double resolution = costmap2d_->getResolution(); //分辨率
+    double resolution = costmap2d_->getResolution(); // 해상도
 
-    covered_path_grid_.header.frame_id = "map"; // covered_path_grid_是costmap库中的占据栅格地图消息。
+    covered_path_grid_.header.frame_id = "map"; // covered_path_grid_는 costmap 라이브러리의 점유 그리드 지도 메시지
     covered_path_grid_.header.stamp = now();
     covered_path_grid_.info.resolution = resolution;
 
@@ -715,27 +725,27 @@ bool CleaningPathPlanning::initializeCoveredGrid()      // 在这里我对CoverG
     covered_path_grid_.info.height = costmap2d_->getSizeInCellsY();
 
     double wx, wy;
-    costmap2d_->mapToWorld(0, 0, wx, wy); // 从地图坐标系转换至世界坐标系。
+    costmap2d_->mapToWorld(0, 0, wx, wy); // 지도 좌표계에서 세계 좌표계로 변환
     covered_path_grid_.info.origin.position.x = wx - resolution / 2;
     covered_path_grid_.info.origin.position.y = wy - resolution / 2;
     covered_path_grid_.info.origin.position.z = 0.0;
     covered_path_grid_.info.origin.orientation.w = 1.0;
 
-    covered_path_grid_.data.resize(covered_path_grid_.info.width * covered_path_grid_.info.height); //这里可以理解为一共有多少个栅格，所以长×宽
+    covered_path_grid_.data.resize(covered_path_grid_.info.width * covered_path_grid_.info.height); //여기에서는 모두 몇 개의 그리드가 있는지, 가로×세로로 이해할 수 있습니다.
 
-    unsigned char *data = costmap2d_->getCharMap(); //返回一个指针，指向一个底层无符号字符数组，数组中存储着代价值，这个数组貌似还可以用来作为代价地图。
+    unsigned char *data = costmap2d_->getCharMap(); //세대 가치가 저장된 하위 부호 없는 문자 배열을 가리키는 포인터를 반환하며, 이 배열은 대가로 지도에 사용될 수 있는 것으로 보입니다.
     for (unsigned int i = 0; i < covered_path_grid_.data.size(); i++)
     {
         /*if(data[i]==nav2_costmap_2d::FREE_SPACE)
             covered_path_grid_.data[i] = nav2_costmap_2d::FREE_SPACE;
         else
             covered_path_grid_.data[i] = 0;*/
-        covered_path_grid_.data[i] = data[i]; //这里我理解为将代价值赋予到栅格地图的每个对应栅格当中去。
+        covered_path_grid_.data[i] = data[i]; //여기서 나는 그리드 지도의 각 해당 그리드에 세대 가치를 부여하는 것으로 이해합니다.
     }
     return true;
 }
 
-//hjr---------------------------------------------------------
+
 bool CleaningPathPlanning::Boundingjudge(int a, int b)
 {
     int num = 0;
